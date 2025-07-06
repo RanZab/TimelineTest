@@ -210,6 +210,11 @@
             opacity: 0.9;
         }
 
+        .dropped-element.selected {
+            border: 2px solid #ffffff !important;
+            box-shadow: 0 0 0 1px #ffffff, 0 4px 8px rgba(0, 0, 0, 0.4);
+        }
+
         .dropped-element.overlays {
             background-color: #8b5cf6;
             border-color: #a78bfa;
@@ -384,6 +389,94 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #525252;
         }
+
+        /* Toggle button styles */
+        .mode-toggle {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background-color: #2a2a2a;
+            border: 1px solid #404040;
+            border-radius: 25px;
+            padding: 4px;
+            display: flex;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .mode-toggle button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 20px;
+            background-color: transparent;
+            color: #9ca3af;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .mode-toggle button.active {
+            background-color: #3b82f6;
+            color: #ffffff;
+        }
+
+        .mode-toggle button:hover:not(.active) {
+            color: #ffffff;
+        }
+
+        /* Video element highlighting in stackable mode */
+        .video-highlight {
+            border: 2px solid #10b981 !important;
+            box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3), 0 4px 8px rgba(0, 0, 0, 0.4);
+        }
+
+        /* Stackable mode styling for seamless stacking */
+        .stackable-mode .dropped-element.overlays {
+            border-bottom: none !important;
+            border-radius: 8px 8px 0 0 !important;
+            margin-bottom: 0 !important;
+        }
+
+        .stackable-mode .dropped-element.video,
+        .stackable-mode .dropped-element.audio,
+        .stackable-mode .dropped-element.video-audio {
+            border-top: none !important;
+            border-radius: 0 0 8px 8px !important;
+            margin-top: 0 !important;
+        }
+
+        /* Stack unit styling */
+        .stack-unit {
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .stack-unit .dropped-element {
+            position: relative !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+        }
+
+        .stack-unit .dropped-element:first-child {
+            border-radius: 8px 8px 0 0 !important;
+        }
+
+        .stack-unit .dropped-element:last-child {
+            border-radius: 0 0 8px 8px !important;
+        }
+
+        .stack-unit .dropped-element:only-child {
+            border-radius: 8px !important;
+        }
     </style>
 </head>
 <body>
@@ -429,8 +522,20 @@
                 <div class="timeline-track" data-track="3">
                     <div class="track-label">Track 3</div>
                 </div>
+                <div class="timeline-track" data-track="4">
+                    <div class="track-label">Track 4</div>
+                </div>
+                <div class="timeline-track" data-track="5">
+                    <div class="track-label">Track 5</div>
+                </div>
             </div>
         </div>
+    </div>
+
+    <!-- Mode Toggle -->
+    <div class="mode-toggle">
+        <button id="separateMode" class="active">Separate</button>
+        <button id="stackableMode">Stackable</button>
     </div>
 
     <script>
@@ -444,6 +549,8 @@
         let startX = 0;
         let startWidth = 0;
         let startLeft = 0;
+        let selectedElement = null;
+        let currentMode = 'separate'; // 'separate' or 'stackable'
 
         // Grid snap size
         const GRID_SIZE = 20;
@@ -546,6 +653,346 @@
             '#feca57'  // Bright Yellow
         ];
         let connectionCounter = 0;
+
+        // Selection management functions
+        function selectElement(element) {
+            // Deselect current element if any
+            if (selectedElement) {
+                selectedElement.classList.remove('selected');
+            }
+            
+            // Select new element
+            selectedElement = element;
+            element.classList.add('selected');
+        }
+
+        function deselectElement() {
+            if (selectedElement) {
+                selectedElement.classList.remove('selected');
+                selectedElement = null;
+            }
+        }
+
+        function handleElementClick(event) {
+            event.stopPropagation();
+            const element = event.target.closest('.dropped-element');
+            if (element) {
+                selectElement(element);
+            }
+        }
+
+        function handleTimelineClick(event) {
+            // Only deselect if clicking directly on timeline track (not on elements)
+            if (event.target.classList.contains('timeline-track')) {
+                deselectElement();
+            }
+        }
+
+        // Mode switching functions
+        function switchToSeparateMode() {
+            currentMode = 'separate';
+            document.getElementById('separateMode').classList.add('active');
+            document.getElementById('stackableMode').classList.remove('active');
+            
+            // Remove stackable mode class from timeline
+            document.querySelector('.timeline-container').classList.remove('stackable-mode');
+            
+            // Convert stackable layout to separate layout
+            convertToSeparateMode();
+        }
+
+        function switchToStackableMode() {
+            currentMode = 'stackable';
+            document.getElementById('separateMode').classList.remove('active');
+            document.getElementById('stackableMode').classList.add('active');
+            
+            // Add stackable mode class to timeline
+            document.querySelector('.timeline-container').classList.add('stackable-mode');
+            
+            // Convert separate layout to stackable layout
+            convertToStackableMode();
+        }
+
+        function convertToSeparateMode() {
+            // Find all stack units and break them apart
+            const stackUnits = document.querySelectorAll('.dropped-element.stack-unit');
+            
+            stackUnits.forEach(stackUnit => {
+                const track = stackUnit.parentElement;
+                const stackLeft = stackUnit.style.left;
+                const stackWidth = stackUnit.style.width;
+                
+                // Extract video element
+                const videoElement = stackUnit.querySelector('.dropped-element.video, .dropped-element.audio, .dropped-element.video-audio');
+                if (videoElement) {
+                    // Reset video element styles
+                    videoElement.style.position = 'absolute';
+                    videoElement.style.left = stackLeft;
+                    videoElement.style.top = '10px';
+                    videoElement.style.width = stackWidth;
+                    
+                    // Add video element back to track
+                    track.appendChild(videoElement);
+                    
+                    // Add event listeners back to video
+                    videoElement.addEventListener('mousedown', handleElementMouseDown);
+                    videoElement.addEventListener('click', handleElementClick);
+                    videoElement.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        deleteElementAndConnections(videoElement);
+                    });
+                    
+                    // Add resize handles back to video
+                    const leftHandle = document.createElement('div');
+                    leftHandle.className = 'resize-handle left';
+                    const rightHandle = document.createElement('div');
+                    rightHandle.className = 'resize-handle right';
+                    videoElement.appendChild(leftHandle);
+                    videoElement.appendChild(rightHandle);
+                    
+                    leftHandle.addEventListener('mousedown', (e) => handleResizeStart(e, videoElement, 'left'));
+                    rightHandle.addEventListener('mousedown', (e) => handleResizeStart(e, videoElement, 'right'));
+                }
+                
+                // Extract overlays and move them to tracks above
+                const overlays = stackUnit.querySelectorAll('.dropped-element.overlays');
+                overlays.forEach((overlay, index) => {
+                    const targetTrackIndex = parseInt(track.dataset.track) - 1 - index;
+                    if (targetTrackIndex >= 1) {
+                        const targetTrack = document.querySelector(`[data-track="${targetTrackIndex}"]`);
+                        if (targetTrack) {
+                            // Reset overlay position
+                            overlay.style.position = 'absolute';
+                            overlay.style.left = stackLeft;
+                            overlay.style.top = '10px';
+                            overlay.style.width = stackWidth;
+                            overlay.style.zIndex = 'auto';
+                            
+                            // Move to target track
+                            targetTrack.appendChild(overlay);
+                            
+                            // Add event listeners back to overlay
+                            overlay.addEventListener('mousedown', handleElementMouseDown);
+                            overlay.addEventListener('click', handleElementClick);
+                            overlay.addEventListener('contextmenu', (e) => {
+                                e.preventDefault();
+                                deleteElementAndConnections(overlay);
+                            });
+                            
+                            // Add resize handles back to overlay
+                            const leftHandle = document.createElement('div');
+                            leftHandle.className = 'resize-handle left';
+                            const rightHandle = document.createElement('div');
+                            rightHandle.className = 'resize-handle right';
+                            overlay.appendChild(leftHandle);
+                            overlay.appendChild(rightHandle);
+                            
+                            leftHandle.addEventListener('mousedown', (e) => handleResizeStart(e, overlay, 'left'));
+                            rightHandle.addEventListener('mousedown', (e) => handleResizeStart(e, overlay, 'right'));
+                            
+                            // Restore connection icons
+                            if (videoElement) {
+                                createConnectionIcons(overlay, videoElement);
+                            }
+                        }
+                    }
+                });
+                
+                // Remove the stack unit
+                stackUnit.remove();
+                
+                // Reset track height
+                track.style.height = '60px';
+            });
+        }
+
+        function convertToStackableMode() {
+            // Group overlays by their connected videos
+            const videoStackMap = new Map();
+            const overlays = document.querySelectorAll('.dropped-element.overlays');
+            
+            overlays.forEach(overlay => {
+                const connectedVideoId = overlay.dataset.connectedVideo;
+                if (connectedVideoId) {
+                    const connectedVideo = document.querySelector(`[data-element-id="${connectedVideoId}"]`);
+                    if (connectedVideo) {
+                        // Remove connection icons
+                        deleteConnectionIcons(overlay);
+                        removeVideoConnectionIcon(connectedVideo, overlay.dataset.elementId);
+                        
+                        // Group by video
+                        if (!videoStackMap.has(connectedVideoId)) {
+                            videoStackMap.set(connectedVideoId, {
+                                video: connectedVideo,
+                                overlays: []
+                            });
+                        }
+                        videoStackMap.get(connectedVideoId).overlays.push(overlay);
+                    }
+                }
+            });
+            
+            // Create stack units for each video with overlays
+            videoStackMap.forEach((stackData, videoId) => {
+                createStackUnit(stackData.video, stackData.overlays);
+            });
+        }
+
+        function createStackUnit(videoElement, overlays) {
+            const track = videoElement.parentElement;
+            
+            // Create stack unit container
+            const stackUnit = document.createElement('div');
+            stackUnit.className = 'dropped-element stack-unit';
+            stackUnit.style.position = 'absolute';
+            stackUnit.style.left = videoElement.style.left;
+            stackUnit.style.top = '10px';
+            stackUnit.style.width = videoElement.style.width;
+            stackUnit.dataset.elementId = videoElement.dataset.elementId;
+            stackUnit.dataset.stackUnit = 'true';
+            
+            // Reset video element styles for container
+            videoElement.style.position = 'relative';
+            videoElement.style.left = '0';
+            videoElement.style.top = '0';
+            videoElement.style.width = '100%';
+            
+            // Add video to stack unit
+            stackUnit.appendChild(videoElement);
+            
+            // Add overlays to stack unit
+            overlays.forEach(overlay => {
+                overlay.style.position = 'relative';
+                overlay.style.left = '0';
+                overlay.style.top = '0';
+                overlay.style.width = '100%';
+                overlay.style.zIndex = 'auto';
+                stackUnit.insertBefore(overlay, videoElement);
+            });
+            
+            // Calculate stack unit height
+            const stackHeight = 40 + (overlays.length * 30); // 40px base + 30px per overlay
+            stackUnit.style.height = `${stackHeight}px`;
+            
+            // Add resize handles to stack unit
+            const leftHandle = document.createElement('div');
+            leftHandle.className = 'resize-handle left';
+            stackUnit.appendChild(leftHandle);
+            
+            const rightHandle = document.createElement('div');
+            rightHandle.className = 'resize-handle right';
+            stackUnit.appendChild(rightHandle);
+            
+            // Add to track
+            track.appendChild(stackUnit);
+            
+            // Add event listeners for stack unit
+            stackUnit.addEventListener('mousedown', handleElementMouseDown);
+            stackUnit.addEventListener('click', handleElementClick);
+            stackUnit.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                deleteStackUnit(stackUnit);
+            });
+            
+            leftHandle.addEventListener('mousedown', (e) => handleResizeStart(e, stackUnit, 'left'));
+            rightHandle.addEventListener('mousedown', (e) => handleResizeStart(e, stackUnit, 'right'));
+            
+            // Adjust track height
+            const newHeight = Math.max(60, stackHeight + 20);
+            track.style.height = `${newHeight}px`;
+        }
+
+        function deleteStackUnit(stackUnit) {
+            const track = stackUnit.parentElement;
+            
+            // Clear selection if deleting selected element
+            if (selectedElement === stackUnit) {
+                selectedElement = null;
+            }
+            
+            // Remove the stack unit
+            stackUnit.remove();
+            
+            // Reset track height
+            const remainingElements = track.querySelectorAll('.dropped-element');
+            if (remainingElements.length === 0) {
+                track.style.height = '60px';
+            }
+        }
+
+        // Helper function to find video element at position
+        function findVideoElementAtPosition(track, x) {
+            // First check for stack units
+            const stackUnits = track.querySelectorAll('.dropped-element.stack-unit');
+            for (let stackUnit of stackUnits) {
+                const stackLeft = parseInt(stackUnit.style.left);
+                const stackWidth = parseInt(stackUnit.style.width);
+                const stackRight = stackLeft + stackWidth;
+                
+                if (x >= stackLeft && x <= stackRight) {
+                    // Return the video element inside the stack unit
+                    return stackUnit.querySelector('.dropped-element.video, .dropped-element.audio, .dropped-element.video-audio');
+                }
+            }
+            
+            // Then check for standalone video elements
+            const videoElements = track.querySelectorAll('.dropped-element.video, .dropped-element.audio, .dropped-element.video-audio');
+            
+            for (let videoElement of videoElements) {
+                // Skip if this video is inside a stack unit
+                if (videoElement.closest('.stack-unit')) continue;
+                
+                const videoLeft = parseInt(videoElement.style.left);
+                const videoWidth = parseInt(videoElement.style.width);
+                const videoRight = videoLeft + videoWidth;
+                
+                // Check if drop position overlaps with video element
+                if (x >= videoLeft && x <= videoRight) {
+                    return videoElement;
+                }
+            }
+            
+            return null;
+        }
+
+        // Create stacked overlay in stackable mode
+        function createStackedOverlay(videoElement, x) {
+            elementCounter++;
+            
+            const overlay = document.createElement('div');
+            overlay.className = 'dropped-element overlays';
+            overlay.dataset.elementId = `element-${elementCounter}`;
+            overlay.textContent = 'Overlays';
+            
+            // Check if video is already in a stack unit
+            const existingStackUnit = videoElement.closest('.stack-unit');
+            
+            if (existingStackUnit) {
+                // Add to existing stack unit
+                overlay.style.position = 'relative';
+                overlay.style.left = '0';
+                overlay.style.top = '0';
+                overlay.style.width = '100%';
+                
+                // Insert before the video element
+                existingStackUnit.insertBefore(overlay, videoElement);
+                
+                // Update stack unit height
+                const overlayCount = existingStackUnit.querySelectorAll('.dropped-element.overlays').length;
+                const stackHeight = 40 + (overlayCount * 30);
+                existingStackUnit.style.height = `${stackHeight}px`;
+                
+                // Update track height
+                const track = existingStackUnit.parentElement;
+                const newHeight = Math.max(60, stackHeight + 20);
+                track.style.height = `${newHeight}px`;
+            } else {
+                // Create new stack unit with video and overlay
+                createStackUnit(videoElement, [overlay]);
+            }
+            
+            showNotification('Overlay stacked successfully!', true);
+        }
 
         // Create connection icons for overlay and video
         function createConnectionIcons(overlay, video) {
@@ -740,23 +1187,73 @@
         function handleDragOver(e) {
             e.preventDefault();
             
-            // Check if dragging overlay and if it can be placed
-            if (draggedElementType === 'overlays') {
-                const rect = e.target.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const snappedX = snapToGrid(x);
-                const trackNumber = getTrackNumber(e.target);
-                
-                if (canPlaceOverlay(trackNumber, snappedX, 200)) {
+            // Handle drag over based on current mode
+            if (currentMode === 'separate') {
+                // Check if dragging overlay and if it can be placed
+                if (draggedElementType === 'overlays') {
+                    const rect = e.target.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const snappedX = snapToGrid(x);
+                    const trackNumber = getTrackNumber(e.target);
+                    
+                    if (canPlaceOverlay(trackNumber, snappedX, 200)) {
+                        e.dataTransfer.dropEffect = 'copy';
+                        e.target.classList.remove('no-drop-cursor');
+                    } else {
+                        e.dataTransfer.dropEffect = 'none';
+                        e.target.classList.add('no-drop-cursor');
+                    }
+                } else {
                     e.dataTransfer.dropEffect = 'copy';
                     e.target.classList.remove('no-drop-cursor');
-                } else {
-                    e.dataTransfer.dropEffect = 'none';
-                    e.target.classList.add('no-drop-cursor');
                 }
-            } else {
-                e.dataTransfer.dropEffect = 'copy';
-                e.target.classList.remove('no-drop-cursor');
+            } else if (currentMode === 'stackable') {
+                // In stackable mode, highlight video elements when dragging overlays
+                if (draggedElementType === 'overlays') {
+                    const rect = e.target.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const snappedX = snapToGrid(x);
+                    const targetVideoElement = findVideoElementAtPosition(e.target, snappedX);
+                    
+                    // Remove highlighting from all video elements and stack units
+                    const allVideoElements = document.querySelectorAll('.dropped-element.video, .dropped-element.audio, .dropped-element.video-audio');
+                    const allStackUnits = document.querySelectorAll('.dropped-element.stack-unit');
+                    allVideoElements.forEach(el => el.classList.remove('video-highlight'));
+                    allStackUnits.forEach(el => el.classList.remove('video-highlight'));
+                    
+                    if (targetVideoElement) {
+                        // Check if video is in a stack unit
+                        const stackUnit = targetVideoElement.closest('.stack-unit');
+                        if (stackUnit) {
+                            const existingOverlays = stackUnit.querySelectorAll('.dropped-element.overlays');
+                            if (existingOverlays.length >= 2) {
+                                e.dataTransfer.dropEffect = 'none';
+                                e.target.classList.add('no-drop-cursor');
+                            } else {
+                                e.dataTransfer.dropEffect = 'copy';
+                                e.target.classList.remove('no-drop-cursor');
+                                stackUnit.classList.add('video-highlight');
+                            }
+                        } else {
+                            // Standalone video element - check track for overlays
+                            const existingOverlays = targetVideoElement.parentElement.querySelectorAll('.dropped-element.overlays');
+                            if (existingOverlays.length >= 2) {
+                                e.dataTransfer.dropEffect = 'none';
+                                e.target.classList.add('no-drop-cursor');
+                            } else {
+                                e.dataTransfer.dropEffect = 'copy';
+                                e.target.classList.remove('no-drop-cursor');
+                                targetVideoElement.classList.add('video-highlight');
+                            }
+                        }
+                    } else {
+                        e.dataTransfer.dropEffect = 'none';
+                        e.target.classList.add('no-drop-cursor');
+                    }
+                } else {
+                    e.dataTransfer.dropEffect = 'copy';
+                    e.target.classList.remove('no-drop-cursor');
+                }
             }
         }
 
@@ -768,6 +1265,14 @@
         function handleDragLeave(e) {
             e.target.classList.remove('drag-over');
             e.target.classList.remove('no-drop-cursor');
+            
+            // Clear video highlighting in stackable mode
+            if (currentMode === 'stackable') {
+                const allVideoElements = document.querySelectorAll('.dropped-element.video, .dropped-element.audio, .dropped-element.video-audio');
+                const allStackUnits = document.querySelectorAll('.dropped-element.stack-unit');
+                allVideoElements.forEach(el => el.classList.remove('video-highlight'));
+                allStackUnits.forEach(el => el.classList.remove('video-highlight'));
+            }
         }
 
         function handleDrop(e) {
@@ -782,18 +1287,49 @@
             const snappedX = snapToGrid(x);
             const trackNumber = getTrackNumber(e.target);
             
-            // Check if overlay can be placed
-            if (draggedElementType === 'overlays') {
-                if (!canPlaceOverlay(trackNumber, snappedX, 200)) {
-                    showNotification('Overlays must be placed above a video/audio layer that overlaps horizontally');
-                    draggedElement = null;
-                    draggedElementType = null;
-                    return; // Don't create overlay if no video below
+            // Handle drop based on current mode
+            if (currentMode === 'separate') {
+                // Check if overlay can be placed
+                if (draggedElementType === 'overlays') {
+                    if (!canPlaceOverlay(trackNumber, snappedX, 200)) {
+                        showNotification('Overlays must be placed above a video/audio layer that overlaps horizontally');
+                        draggedElement = null;
+                        draggedElementType = null;
+                        return; // Don't create overlay if no video below
+                    }
+                }
+                
+                // Create element based on type
+                createDroppedElement(draggedElementType, snappedX, e.target);
+            } else if (currentMode === 'stackable') {
+                // In stackable mode, handle overlay stacking
+                if (draggedElementType === 'overlays') {
+                    const targetVideoElement = findVideoElementAtPosition(e.target, snappedX);
+                    if (targetVideoElement) {
+                        // Check existing overlays based on whether video is in a stack unit
+                        const stackUnit = targetVideoElement.closest('.stack-unit');
+                        const existingOverlays = stackUnit ? 
+                            stackUnit.querySelectorAll('.dropped-element.overlays') : 
+                            targetVideoElement.parentElement.querySelectorAll('.dropped-element.overlays');
+                        
+                        if (existingOverlays.length >= 2) {
+                            showNotification('Maximum 2 overlays per video/audio element!', false);
+                            draggedElement = null;
+                            draggedElementType = null;
+                            return;
+                        }
+                        createStackedOverlay(targetVideoElement, snappedX);
+                    } else {
+                        showNotification('Overlay must be placed on top of video/audio element!', false);
+                        draggedElement = null;
+                        draggedElementType = null;
+                        return;
+                    }
+                } else {
+                    // Create regular element
+                    createDroppedElement(draggedElementType, snappedX, e.target);
                 }
             }
-            
-            // Create element based on type
-            createDroppedElement(draggedElementType, snappedX, e.target);
             
             draggedElement = null;
             draggedElementType = null;
@@ -839,8 +1375,8 @@
             
             track.appendChild(element);
             
-            // Create connection for overlay
-            if (type === 'overlays') {
+            // Create connection for overlay (only in separate mode)
+            if (type === 'overlays' && currentMode === 'separate') {
                 const trackNumber = getTrackNumber(track);
                 const overlayLeft = parseInt(element.style.left);
                 const overlayWidth = parseInt(element.style.width);
@@ -859,6 +1395,9 @@
             // Add resize functionality
             leftHandle.addEventListener('mousedown', (e) => handleResizeStart(e, element, 'left'));
             rightHandle.addEventListener('mousedown', (e) => handleResizeStart(e, element, 'right'));
+            
+            // Add selection functionality (click)
+            element.addEventListener('click', handleElementClick);
             
             // Add delete functionality (right-click)
             element.addEventListener('contextmenu', (e) => {
@@ -893,6 +1432,21 @@
                 deleteConnectionIcons(element);
             }
             
+            // Clear selection if deleting selected element
+            if (selectedElement === element) {
+                selectedElement = null;
+            }
+            
+            // In stackable mode, readjust track height when deleting overlays
+            if (currentMode === 'stackable' && elementType === 'overlays') {
+                const track = element.parentElement;
+                setTimeout(() => {
+                    const remainingOverlays = track.querySelectorAll('.dropped-element.overlays');
+                    const newHeight = 60 + (remainingOverlays.length * 30);
+                    track.style.height = `${newHeight}px`;
+                }, 10);
+            }
+            
             // Remove the element
             element.remove();
         }
@@ -906,6 +1460,9 @@
             if (e.target.classList.contains('resize-handle')) return;
             
             const element = e.currentTarget;
+            
+            // Select the element when starting to drag
+            selectElement(element);
             const rect = element.getBoundingClientRect();
             const offsetX = e.clientX - rect.left;
             const offsetY = e.clientY - rect.top;
@@ -933,6 +1490,11 @@
                     element.style.position = 'fixed';
                     element.style.left = `${e.clientX - offsetX}px`;
                     element.style.top = `${e.clientY - offsetY}px`;
+                    
+                    // For stack units, ensure proper z-index during drag
+                    if (element.classList.contains('stack-unit')) {
+                        element.style.zIndex = '1000';
+                    }
                     
                     // Highlight potential drop tracks
                     tracks.forEach(track => {
@@ -972,38 +1534,79 @@
                     });
                     
                     if (targetTrack && targetTrack !== originalTrack) {
-                        // Check if overlay can be placed in new track
+                        // Check if we're dragging a stack unit
+                        const isStackUnit = element.classList.contains('stack-unit');
                         const elementType = element.className.split(' ')[1];
-                        if (elementType === 'overlays') {
-                            const targetTrackNumber = getTrackNumber(targetTrack);
+                        
+                        if (isStackUnit) {
+                            // Handle stack unit movement
                             const targetTrackRect = targetTrack.getBoundingClientRect();
                             const newX = e.clientX - targetTrackRect.left - offsetX;
                             const snappedX = snapToGrid(Math.max(0, newX));
                             
-                            if (!canPlaceOverlay(targetTrackNumber, snappedX, 200)) {
-                                // Can't place overlay here, return to original position
-                                element.style.position = 'absolute';
-                                element.style.top = '10px';
-                                return;
+                            // Reset stack unit position
+                            element.style.position = 'absolute';
+                            element.style.left = `${snappedX}px`;
+                            element.style.top = '10px';
+                            
+                            // Move stack unit to new track
+                            targetTrack.appendChild(element);
+                            
+                            // Reset original track height
+                            setTimeout(() => {
+                                const originalElements = originalTrack.querySelectorAll('.dropped-element');
+                                if (originalElements.length === 0) {
+                                    originalTrack.style.height = '60px';
+                                } else {
+                                    // Recalculate height based on remaining elements
+                                    const remainingStackUnits = originalTrack.querySelectorAll('.dropped-element.stack-unit');
+                                    if (remainingStackUnits.length > 0) {
+                                        const maxHeight = Math.max(...Array.from(remainingStackUnits).map(su => parseInt(su.style.height) || 70));
+                                        originalTrack.style.height = `${Math.max(60, maxHeight + 20)}px`;
+                                    } else {
+                                        originalTrack.style.height = '60px';
+                                    }
+                                }
+                            }, 10);
+                            
+                            // Adjust new track height for stack unit
+                            const stackHeight = parseInt(element.style.height) || 70;
+                            const newHeight = Math.max(60, stackHeight + 20);
+                            targetTrack.style.height = `${newHeight}px`;
+                            
+                        } else {
+                            // Handle regular element movement
+                            if (elementType === 'overlays') {
+                                const targetTrackNumber = getTrackNumber(targetTrack);
+                                const targetTrackRect = targetTrack.getBoundingClientRect();
+                                const newX = e.clientX - targetTrackRect.left - offsetX;
+                                const snappedX = snapToGrid(Math.max(0, newX));
+                                
+                                if (!canPlaceOverlay(targetTrackNumber, snappedX, 200)) {
+                                    // Can't place overlay here, return to original position
+                                    element.style.position = 'absolute';
+                                    element.style.top = '10px';
+                                    return;
+                                }
+                            }
+                            
+                            // Move element to new track
+                            const targetTrackRect = targetTrack.getBoundingClientRect();
+                            const newX = e.clientX - targetTrackRect.left - offsetX;
+                            const snappedX = snapToGrid(Math.max(0, newX));
+                            
+                            element.style.position = 'absolute';
+                            element.style.left = `${snappedX}px`;
+                            element.style.top = '10px';
+                            
+                            // Move element to new track
+                            targetTrack.appendChild(element);
+                            
+                            // Update connection for overlay
+                            if (elementType === 'overlays') {
+                                updateConnection(element);
                             }
                         }
-                        
-                        // Move element to new track
-                        const targetTrackRect = targetTrack.getBoundingClientRect();
-                        const newX = e.clientX - targetTrackRect.left - offsetX;
-                        const snappedX = snapToGrid(Math.max(0, newX));
-                        
-                        element.style.position = 'absolute';
-                        element.style.left = `${snappedX}px`;
-                        element.style.top = '10px';
-                        
-                        // Move element to new track
-                        targetTrack.appendChild(element);
-                        
-                                                 // Update connection for overlay
-                         if (elementType === 'overlays') {
-                             updateConnection(element);
-                         }
                     } else {
                         // Return to original position if no valid drop target
                         element.style.position = 'absolute';
@@ -1071,7 +1674,24 @@
         // Initialize the application
         document.addEventListener('DOMContentLoaded', () => {
             initializeDragAndDrop();
+            initializeSelection();
+            initializeModeToggle();
         });
+
+        // Initialize selection functionality
+        function initializeSelection() {
+            // Add click listeners to timeline tracks for deselection
+            const timelineTracks = document.querySelectorAll('.timeline-track');
+            timelineTracks.forEach(track => {
+                track.addEventListener('click', handleTimelineClick);
+            });
+        }
+
+        // Initialize mode toggle functionality
+        function initializeModeToggle() {
+            document.getElementById('separateMode').addEventListener('click', switchToSeparateMode);
+            document.getElementById('stackableMode').addEventListener('click', switchToStackableMode);
+        }
 
         // Prevent default drag behavior on the document
         document.addEventListener('dragover', (e) => {
