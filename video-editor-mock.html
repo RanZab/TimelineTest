@@ -454,6 +454,8 @@
             border-radius: 8px;
             overflow: hidden;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
         }
 
         .stack-unit .dropped-element {
@@ -464,6 +466,15 @@
             margin: 0 !important;
             border-radius: 0 !important;
             box-shadow: none !important;
+            display: flex !important;
+            flex-shrink: 0;
+            height: 30px !important;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .stack-unit .dropped-element.video-audio {
+            height: 40px !important;
         }
 
         .stack-unit .dropped-element:first-child {
@@ -871,7 +882,8 @@
             });
             
             // Calculate stack unit height
-            const stackHeight = 40 + (overlays.length * 30); // 40px base + 30px per overlay
+            const videoHeight = videoElement.classList.contains('video-audio') ? 40 : 30;
+            const stackHeight = videoHeight + (overlays.length * 30); // video height + 30px per overlay
             stackUnit.style.height = `${stackHeight}px`;
             
             // Add resize handles to stack unit
@@ -979,7 +991,9 @@
                 
                 // Update stack unit height
                 const overlayCount = existingStackUnit.querySelectorAll('.dropped-element.overlays').length;
-                const stackHeight = 40 + (overlayCount * 30);
+                const videoElement = existingStackUnit.querySelector('.dropped-element.video, .dropped-element.audio, .dropped-element.video-audio');
+                const videoHeight = videoElement && videoElement.classList.contains('video-audio') ? 40 : 30;
+                const stackHeight = videoHeight + (overlayCount * 30);
                 existingStackUnit.style.height = `${stackHeight}px`;
                 
                 // Update track height
